@@ -123,6 +123,21 @@ def get_email_content(email_type: str) -> tuple[str, str]:
     return subject, body
 
 
+def get_smtp_config(email: str) -> tuple[str, int]:
+    """根据邮箱地址自动获取 SMTP 配置"""
+    email = email.lower()
+    if '@gmail.com' in email:
+        return 'smtp.gmail.com', 465
+    elif '@163.com' in email:
+        return 'smtp.163.com', 465
+    elif '@qq.com' in email:
+        return 'smtp.qq.com', 465
+    else:
+        # 默认尝试 465 SSL
+        domain = email.split('@')[-1]
+        return f'smtp.{domain}', 465
+
+
 def send_email():
     """发送邮件的主函数"""
     # 从环境变量获取配置
@@ -140,33 +155,49 @@ def send_email():
     # 创建邮件
     message = MIMEMultipart('alternative')
     message['Subject'] = subject
-    message['From'] = sender_email
+    message['From'] = f"打卡提醒 <{sender_email}>" # 163 有时要求这种格式
     message['To'] = receiver_email
     
     # 添加 HTML 内容
     html_part = MIMEText(body, 'html', 'utf-8')
     message.attach(html_part)
     
-    # 使用 Gmail SMTP 服务器发送
+    # 调试模式
+    debug_mode = os.environ.get('SMTP_DEBUG', 'False').lower() == 'true'
+    
+    # 自动获取 SMTP 地址
+    smtp_host, smtp_port = get_smtp_config(sender_email)
+
     try:
-        print(f"正在连接 Gmail SMTP 服务器...")
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            print(f"正在登录邮箱: {sender_email}")
+        print(f"🚀 正在准备通过 {smtp_host} 发送邮件...")
+        
+        # 针对 163/QQ/Gmail 的统一处理逻辑
+        try:
+            print(f"尝试连接 {smtp_host}:{smtp_port} (SSL)...")
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+        except Exception as e:
+            print(f"⚠️ SSL 连接失败 ({e})，尝试 587 端口 (STARTTLS)...")
+            server = smtplib.SMTP(smtp_host, 587, timeout=15)
+            server.starttls()
+
+        if debug_mode:
+            server.set_debuglevel(1)
+            
+        with server:
+            print(f"正在登录 ({sender_email})...")
             server.login(sender_email, sender_password)
             
-            print(f"正在发送邮件到: {receiver_email}")
-            server.sendmail(sender_email, receiver_email, message.as_string())
+            print(f"正在推送给 {receiver_email}...")
+            server.sendmail(sender_email, [receiver_email], message.as_string())
             
         print(f"✅ 邮件发送成功！")
-        print(f"   类型: {'早安打卡提醒' if email_type == 'morning' else '下班打卡提醒'}")
-        print(f"   收件人: {receiver_email}")
         
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"❌ 邮箱认证失败！请检查邮箱地址和应用专用密码。")
-        print(f"   提示：Gmail 需要使用应用专用密码，而非账户密码。")
-        raise
     except Exception as e:
-        print(f"❌ 邮件发送失败: {e}")
+        print(f"❌ 发送失败: {e}")
+        if '163' in smtp_host:
+            print("\n💡 163 邮箱排错提示:")
+            print("1. 必须使用“授权码”而非登录密码（设置 -> POP3/SMTP/IMAP -> 新增授权码）。")
+            print("2. 确认已开启 SMTP 服务。")
         raise
 
 
