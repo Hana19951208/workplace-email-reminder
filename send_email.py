@@ -14,13 +14,7 @@ import pytz
 
 def get_email_content(email_type: str) -> tuple[str, str]:
     """
-    根据邮件类型获取邮件主题和内容
-    
-    Args:
-        email_type: 邮件类型，'morning' 或 'evening'
-    
-    Returns:
-        (subject, body) 元组
+    根据邮件类型获取邮件主题 and 内容
     """
     # 获取北京时间
     beijing_tz = pytz.timezone('Asia/Shanghai')
@@ -201,5 +195,34 @@ def send_email():
         raise
 
 
+def auto_check_and_send():
+    """自动检查当前时间并决定是否发送邮件"""
+    beijing_tz = pytz.timezone('Asia/Shanghai')
+    now = datetime.now(beijing_tz)
+    current_time = now.strftime('%H:%M')
+    
+    # 定义发送窗口（在目标时间后的 5 分钟内都可以发送，提高成功率）
+    # 早上 8:20 - 8:25 发送早安邮件
+    # 下午 5:30 - 5:35 发送下班邮件
+    
+    print(f"⏰ 当前北京时间: {current_time}, 正在检查是否符合运行窗口...")
+    
+    if "08:20" <= current_time <= "08:25":
+        print("☀️ 符合早安邮件发送窗口！")
+        os.environ['EMAIL_TYPE'] = 'morning'
+        send_email()
+    elif "17:30" <= current_time <= "17:35":
+        print("🌙 符合下班邮件发送窗口！")
+        os.environ['EMAIL_TYPE'] = 'evening'
+        send_email()
+    else:
+        print("☕ 当前不在预设的发送时段（08:20 或 17:30），跳过发送。")
+
+
 if __name__ == '__main__':
-    send_email()
+    # 如果设置了 AUTO_CHECK 环境变量，则进入时段检查模式
+    if os.environ.get('AUTO_CHECK', 'False').lower() == 'true':
+        auto_check_and_send()
+    else:
+        # 否则保持原有的强制发送逻辑（用于手动触发或本地测试）
+        send_email()
