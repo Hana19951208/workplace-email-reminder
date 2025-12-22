@@ -90,7 +90,7 @@ workplace-email-reminder/
    ```bash
    cp .env.example .env
    ```
-   编辑 `.env` 文件，填入你的邮箱和**应用专用密码**。
+   编辑 `.env` 文件，填入你的邮箱 and **应用专用密码**。
 
 3. **运行测试**：
    ```bash
