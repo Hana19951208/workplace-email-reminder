@@ -37,6 +37,6 @@ jobs:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
-          AUTO_CHECK: ${{ github.event_name == 'schedule' }}
+          AUTO_CHECK: 'true'
           EMAIL_TYPE: ${{ github.event.inputs.email_type || 'morning' }}
         run: python send_email.py
