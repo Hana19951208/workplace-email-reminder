@@ -10,11 +10,43 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import pytz
+import time
+
+
+def wait_for_target_time(target_hour: int, target_minute: int):
+    """
+    精准等待直到目标北京时间
+    目的是规避 GitHub Actions 的调度延迟，提前启动并进行进程内等待
+    """
+    beijing_tz = pytz.timezone('Asia/Shanghai')
+    now = datetime.now(beijing_tz)
+    target_time = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+    
+    # 如果目标时间已经过去（例如 08:30 启动了但要等 08:15），则不等待直接发送
+    if now < target_time:
+        wait_seconds = (target_time - now).total_seconds()
+        print(f"⏳ 当前北京时间: {now.strftime('%H:%M:%S')}")
+        print(f"🎯 目标发送时间: {target_time.strftime('%H:%M:%S')}")
+        print(f"😴 需要等待 {wait_seconds:.1f} 秒，程序进入休眠模式...")
+        
+        # 每 60 秒打印一次进度防止系统认为进程僵死
+        while (target_time - datetime.now(beijing_tz)).total_seconds() > 0:
+            remaining = (target_time - datetime.now(beijing_tz)).total_seconds()
+            if remaining <= 0:
+                break
+            sleep_chunk = min(remaining, 60)
+            time.sleep(sleep_chunk)
+            if remaining > 60:
+                 print(f"⏰ 还在等待中... 剩余 {remaining:.0f} 秒")
+        
+        print(f"🚀 时间到！当前时间: {datetime.now(beijing_tz).strftime('%H:%M:%S')}")
+    else:
+        print(f"⏩ 当前时间 {now.strftime('%H:%M:%S')} 已超过目标时间，立即开始发送逻辑。")
 
 
 def get_email_content(email_type: str) -> tuple[str, str]:
     """
-    根据邮件类型获取邮件主题 and 内容
+    根据邮件类型获取邮件主题和内容
     """
     # 获取北京时间
     beijing_tz = pytz.timezone('Asia/Shanghai')
@@ -196,27 +228,32 @@ def send_email():
 
 
 def auto_check_and_send():
-    """自动检查当前时间并决定是否发送邮件"""
+    """自动检查并精准等待发送时段"""
     beijing_tz = pytz.timezone('Asia/Shanghai')
     now = datetime.now(beijing_tz)
-    current_time = now.strftime('%H:%M')
+    current_hour = now.hour
     
-    # 定义发送窗口（在目标时间后的 5 分钟内都可以发送，提高成功率）
-    # 早上 8:20 - 8:25 发送早安邮件
-    # 下午 5:30 - 5:35 发送下班邮件
+    print(f"⏰ 脚本已启动，当前北京时间: {now.strftime('%H:%M:%S')}")
     
-    print(f"⏰ 当前北京时间: {current_time}, 正在检查是否符合运行窗口...")
+    # 抢占式调度逻辑说明：
+    # 早上：8:00 - 8:30 收到。设定目标为 08:15。工作流会在 07:45 提前启动
+    # 晚上：17:30 左右下班。设定目标为 17:35。工作流会在 17:00 提前启动
     
-    if "08:20" <= current_time <= "08:25":
-        print("☀️ 符合早安邮件发送窗口！")
+    if 7 <= current_hour < 9:
+        print("☀️ 进入早安邮件预处理流程...")
+        # 等待到 08:15 分发送
+        wait_for_target_time(8, 15)
         os.environ['EMAIL_TYPE'] = 'morning'
         send_email()
-    elif "17:30" <= current_time <= "17:35":
-        print("🌙 符合下班邮件发送窗口！")
+    elif 16 <= current_hour < 18:
+        print("🌙 进入下班邮件预处理流程...")
+        # 等待到 17:35 分发送
+        wait_for_target_time(17, 35)
         os.environ['EMAIL_TYPE'] = 'evening'
         send_email()
     else:
-        print("☕ 当前不在预设的发送时段（08:20 或 17:30），跳过发送。")
+        print(f"☕ 当前时间 ({now.strftime('%H:%M')}) 不在任何预设的启动时段，将尝试直接发送。")
+        send_email()
 
 
 if __name__ == '__main__':
