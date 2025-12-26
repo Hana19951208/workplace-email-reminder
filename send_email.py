@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-上下班邮件提醒脚本
-使用 Gmail SMTP 服务器发送邮件
+📧 上下班邮件提醒脚本
+功能：通过 Gmail/163/QQ 等 SMTP 服务发送精美的 HTML 提醒邮件。
+策略：采用“抢占式等待”方案，提前启动并精准延时，规避 GitHub Actions 的调度延迟。
 """
 
 import os
@@ -15,21 +16,21 @@ import time
 
 def wait_for_target_time(target_hour: int, target_minute: int):
     """
-    精准等待直到目标北京时间
-    目的是规避 GitHub Actions 的调度延迟，提前启动并进行进程内等待
+    🎯 精准等待函数
+    逻辑：计算当前北京时间与目标时刻的秒数差，进行阻塞式休眠。
     """
     beijing_tz = pytz.timezone('Asia/Shanghai')
     now = datetime.now(beijing_tz)
+    # 构造当日的目标时间对象
     target_time = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
     
-    # 如果目标时间已经过去（例如 08:30 启动了但要等 08:15），则不等待直接发送
+    # 如果目标时间还在未来，则进入休眠逻辑
     if now < target_time:
         wait_seconds = (target_time - now).total_seconds()
-        print(f"⏳ 当前北京时间: {now.strftime('%H:%M:%S')}")
-        print(f"🎯 目标发送时间: {target_time.strftime('%H:%M:%S')}")
-        print(f"😴 需要等待 {wait_seconds:.1f} 秒，程序进入休眠模式...")
+        print(f"⏳ [北京时间] 当前: {now.strftime('%H:%M:%S')} -> 目标: {target_time.strftime('%H:%M:%S')}")
+        print(f"😴 守护进程已启动，预计休眠 {wait_seconds:.1f} 秒...")
         
-        # 每 60 秒打印一次进度防止系统认为进程僵死
+        # 每 60 秒苏醒一次并打印进度，防止 GitHub Actions 认为进程由于无输出而卡死
         while (target_time - datetime.now(beijing_tz)).total_seconds() > 0:
             remaining = (target_time - datetime.now(beijing_tz)).total_seconds()
             if remaining <= 0:
@@ -37,44 +38,38 @@ def wait_for_target_time(target_hour: int, target_minute: int):
             sleep_chunk = min(remaining, 60)
             time.sleep(sleep_chunk)
             if remaining > 60:
-                 print(f"⏰ 还在等待中... 剩余 {remaining:.0f} 秒")
+                 print(f"⏰ 正在精准倒计时... 剩余 {remaining:.0f} 秒")
         
-        print(f"🚀 时间到！当前时间: {datetime.now(beijing_tz).strftime('%H:%M:%S')}")
+        print(f"🚀 时间到！执行发送任务，当前时间: {datetime.now(beijing_tz).strftime('%H:%M:%S')}")
     else:
-        print(f"⏩ 当前时间 {now.strftime('%H:%M:%S')} 已超过目标时间，立即开始发送逻辑。")
+        # 如果启动时已经过了目标时间，则直接发送，不进行等待
+        print(f"⏩ 当前时间 {now.strftime('%H:%M:%S')} 已超过目标时刻，跳过等待直接发送。")
 
 
 def get_email_content(email_type: str) -> tuple[str, str]:
     """
-    根据邮件类型获取邮件主题和内容
+    🎨 邮件内容模板引擎
+    功能：根据 morning/evening 类型返回对应的 HTML 模板和主题。
     """
-    # 获取北京时间
     beijing_tz = pytz.timezone('Asia/Shanghai')
     now = datetime.now(beijing_tz)
-    date_str = now.strftime('%Y年%m月%d日 %A')
     time_str = now.strftime('%H:%M')
     
-    # 星期几的中文映射
+    # 星期几的中文转换表
     weekday_map = {
-        'Monday': '星期一',
-        'Tuesday': '星期二',
-        'Wednesday': '星期三',
-        'Thursday': '星期四',
-        'Friday': '星期五',
-        'Saturday': '星期六',
-        'Sunday': '星期日'
+        'Monday': '星期一', 'Tuesday': '星期二', 'Wednesday': '星期三',
+        'Thursday': '星期四', 'Friday': '星期五', 'Saturday': '星期六', 'Sunday': '星期日'
     }
     weekday_cn = weekday_map.get(now.strftime('%A'), now.strftime('%A'))
     date_str_cn = now.strftime(f'%Y年%m月%d日 {weekday_cn}')
     
     if email_type == 'morning':
         subject = f"☀️ 早安打卡提醒 - {date_str_cn}"
+        # 早晨模板使用暖色调渐变
         body = f"""
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-</head>
+<head><meta charset="UTF-8"></head>
 <body style="font-family: 'Segoe UI', Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: 0; padding: 20px;">
     <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
         <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 40px 30px; text-align: center;">
@@ -82,38 +77,25 @@ def get_email_content(email_type: str) -> tuple[str, str]:
             <h1 style="color: white; margin: 0; font-size: 28px; text-shadow: 2px 2px 4px rgba(0,0,0,0.2);">早安打卡提醒</h1>
         </div>
         <div style="padding: 40px 30px;">
-            <p style="color: #333; font-size: 18px; line-height: 1.8; margin: 0 0 20px 0;">
-                亲爱的小伙伴，新的一天开始啦！ 🎉
-            </p>
+            <p style="color: #333; font-size: 18px; line-height: 1.8; margin: 0 0 20px 0;">亲爱的小伙伴，新年的一天开始啦！ 🎉</p>
             <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); border-radius: 15px; padding: 25px; margin: 20px 0;">
-                <p style="color: #555; font-size: 16px; margin: 0;">
-                    📅 <strong>{date_str_cn}</strong><br>
-                    ⏰ 现在时间：<strong>{time_str}</strong>
-                </p>
+                <p style="color: #555; font-size: 16px; margin: 0;">📅 <strong>{date_str_cn}</strong><br>⏰ 提醒时刻：<strong>{time_str}</strong></p>
             </div>
-            <p style="color: #666; font-size: 16px; line-height: 1.8;">
-                ⏰ 请记得<strong style="color: #f5576c;">上班打卡</strong>哦！<br><br>
-                💪 愿你今天工作顺利，心情愉快！<br>
-                ☕ 先来杯咖啡开启元气满满的一天吧！
-            </p>
+            <p style="color: #666; font-size: 16px; line-height: 1.8;">⏰ 请记得<strong style="color: #f5576c;">上班打卡</strong>哦！<br><br>💪 愿你今天工作顺利，心情愉快！</p>
         </div>
         <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #eee;">
-            <p style="color: #999; font-size: 12px; margin: 0;">
-                🤖 此邮件由 GitHub Actions 自动发送
-            </p>
+            <p style="color: #999; font-size: 12px; margin: 0;">🤖 此邮件由 GitHub Actions 抢占式系统自动发送</p>
         </div>
     </div>
 </body>
-</html>
-"""
+</html>"""
     else:
         subject = f"🌙 下班打卡提醒 - {date_str_cn}"
+        # 傍晚模板使用深蓝紫色调
         body = f"""
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-</head>
+<head><meta charset="UTF-8"></head>
 <body style="font-family: 'Segoe UI', Arial, sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); margin: 0; padding: 20px;">
     <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
@@ -121,145 +103,98 @@ def get_email_content(email_type: str) -> tuple[str, str]:
             <h1 style="color: white; margin: 0; font-size: 28px; text-shadow: 2px 2px 4px rgba(0,0,0,0.2);">下班打卡提醒</h1>
         </div>
         <div style="padding: 40px 30px;">
-            <p style="color: #333; font-size: 18px; line-height: 1.8; margin: 0 0 20px 0;">
-                辛苦了一天，终于到下班时间啦！ 🎊
-            </p>
+            <p style="color: #333; font-size: 18px; line-height: 1.8; margin: 0 0 20px 0;">辛苦了一天，到下班时间啦！ 🎊</p>
             <div style="background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); border-radius: 15px; padding: 25px; margin: 20px 0;">
-                <p style="color: #555; font-size: 16px; margin: 0;">
-                    📅 <strong>{date_str_cn}</strong><br>
-                    ⏰ 现在时间：<strong>{time_str}</strong>
-                </p>
+                <p style="color: #555; font-size: 16px; margin: 0;">📅 <strong>{date_str_cn}</strong><br>⏰ 提醒时刻：<strong>{time_str}</strong></p>
             </div>
-            <p style="color: #666; font-size: 16px; line-height: 1.8;">
-                ⏰ 别忘了<strong style="color: #764ba2;">下班打卡</strong>哦！<br><br>
-                🏠 收拾好心情，准备回家吧～<br>
-                🌟 好好休息，明天继续加油！
-            </p>
+            <p style="color: #666; font-size: 16px; line-height: 1.8;">⏰ 别忘了<strong style="color: #764ba2;">下班打卡</strong>哦！<br><br>🏠 收拾好心情，准备回家吧～</p>
         </div>
         <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #eee;">
-            <p style="color: #999; font-size: 12px; margin: 0;">
-                🤖 此邮件由 GitHub Actions 自动发送
-            </p>
+            <p style="color: #999; font-size: 12px; margin: 0;">🤖 此邮件由 GitHub Actions 抢占式系统自动发送</p>
         </div>
     </div>
 </body>
-</html>
-"""
-    
+</html>"""
     return subject, body
 
 
 def get_smtp_config(email: str) -> tuple[str, int]:
-    """根据邮箱地址自动获取 SMTP 配置"""
+    """自动获取 SMTP 配置：根据常用邮箱后缀分配对应服务器"""
     email = email.lower()
-    if '@gmail.com' in email:
-        return 'smtp.gmail.com', 465
-    elif '@163.com' in email:
-        return 'smtp.163.com', 465
-    elif '@qq.com' in email:
-        return 'smtp.qq.com', 465
-    else:
-        # 默认尝试 465 SSL
-        domain = email.split('@')[-1]
-        return f'smtp.{domain}', 465
+    if '@gmail.com' in email: return 'smtp.gmail.com', 465
+    if '@163.com' in email: return 'smtp.163.com', 465
+    if '@qq.com' in email: return 'smtp.qq.com', 465
+    domain = email.split('@')[-1]
+    return f'smtp.{domain}', 465
 
 
 def send_email():
-    """发送邮件的主函数"""
-    # 从环境变量获取配置
+    """🚀 邮件发送核心逻辑"""
     sender_email = os.environ.get('SENDER_EMAIL')
     sender_password = os.environ.get('SENDER_PASSWORD')
     receiver_email = os.environ.get('RECEIVER_EMAIL')
     email_type = os.environ.get('EMAIL_TYPE', 'morning')
     
     if not all([sender_email, sender_password, receiver_email]):
-        raise ValueError("缺少必要的环境变量：SENDER_EMAIL, SENDER_PASSWORD, RECEIVER_EMAIL")
+        raise ValueError("❌ 错误：环境变量 SENDER_EMAIL, SENDER_PASSWORD 或 RECEIVER_EMAIL 缺失！")
     
-    # 获取邮件内容
     subject, body = get_email_content(email_type)
     
-    # 创建邮件
+    # 构建多部分邮件对象
     message = MIMEMultipart('alternative')
     message['Subject'] = subject
-    message['From'] = f"打卡提醒 <{sender_email}>" # 163 有时要求这种格式
+    message['From'] = f"打卡提醒 <{sender_email}>"
     message['To'] = receiver_email
+    message.attach(MIMEText(body, 'html', 'utf-8'))
     
-    # 添加 HTML 内容
-    html_part = MIMEText(body, 'html', 'utf-8')
-    message.attach(html_part)
-    
-    # 调试模式
-    debug_mode = os.environ.get('SMTP_DEBUG', 'False').lower() == 'true'
-    
-    # 自动获取 SMTP 地址
     smtp_host, smtp_port = get_smtp_config(sender_email)
 
     try:
-        print(f"🚀 正在准备通过 {smtp_host} 发送邮件...")
-        
-        # 针对 163/QQ/Gmail 的统一处理逻辑
+        # 优先使用 SSL (465端口)
         try:
-            print(f"尝试连接 {smtp_host}:{smtp_port} (SSL)...")
+            print(f"🔗 正在尝试 SSL 连接 {smtp_host}:{smtp_port}...")
             server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
-        except Exception as e:
-            print(f"⚠️ SSL 连接失败 ({e})，尝试 587 端口 (STARTTLS)...")
+        except Exception:
+            print(f"⚠️ SSL 连接失败，正在回退至 STARTTLS (587端口)...")
             server = smtplib.SMTP(smtp_host, 587, timeout=15)
             server.starttls()
-
-        if debug_mode:
-            server.set_debuglevel(1)
             
         with server:
-            print(f"正在登录 ({sender_email})...")
             server.login(sender_email, sender_password)
-            
-            print(f"正在推送给 {receiver_email}...")
             server.sendmail(sender_email, [receiver_email], message.as_string())
-            
-        print(f"✅ 邮件发送成功！")
-        
+        print(f"✅ 邮件已成功送达至 {receiver_email}！")
     except Exception as e:
-        print(f"❌ 发送失败: {e}")
-        if '163' in smtp_host:
-            print("\n💡 163 邮箱排错提示:")
-            print("1. 必须使用“授权码”而非登录密码（设置 -> POP3/SMTP/IMAP -> 新增授权码）。")
-            print("2. 确认已开启 SMTP 服务。")
+        print(f"❌ 发送失败: {str(e)}")
         raise
 
 
 def auto_check_and_send():
-    """自动检查并精准等待发送时段"""
+    """🕒 定时任务分发逻辑"""
     beijing_tz = pytz.timezone('Asia/Shanghai')
     now = datetime.now(beijing_tz)
-    current_hour = now.hour
+    h = now.hour
     
-    print(f"⏰ 脚本已启动，当前北京时间: {now.strftime('%H:%M:%S')}")
+    print(f"🏠 定时守卫已就绪，当前北京时间: {now.strftime('%H:%M:%S')}")
     
-    # 抢占式调度逻辑说明：
-    # 早上：8:00 - 8:30 收到。设定目标为 08:15。工作流会在 07:45 提前启动
-    # 晚上：17:30 左右下班。设定目标为 17:35。工作流会在 17:00 提前启动
-    
-    if 7 <= current_hour < 9:
-        print("☀️ 进入早安邮件预处理流程...")
-        # 等待到 08:15 分发送
-        wait_for_target_time(8, 15)
+    # 根据启动的小时数判定是【早间启动】还是【晚间启动】
+    if 7 <= h < 9:
+        print("☀️ 检测到早间启动信号...")
+        wait_for_target_time(8, 15) # 设定在 08:15 分发出提醒
         os.environ['EMAIL_TYPE'] = 'morning'
         send_email()
-    elif 16 <= current_hour < 18:
-        print("🌙 进入下班邮件预处理流程...")
-        # 等待到 17:35 分发送
-        wait_for_target_time(17, 35)
+    elif 16 <= h < 18:
+        print("🌙 检测到晚间启动信号...")
+        wait_for_target_time(17, 35) # 设定在 17:35 分发出提醒
         os.environ['EMAIL_TYPE'] = 'evening'
         send_email()
     else:
-        print(f"☕ 当前时间 ({now.strftime('%H:%M')}) 不在任何预设的启动时段，将尝试直接发送。")
+        print(f"☕ 当前时间 ({now.strftime('%H:%M')}) 不在自动任务窗口内，将执行常规发送测试流程。")
         send_email()
 
 
 if __name__ == '__main__':
-    # 如果设置了 AUTO_CHECK 环境变量，则进入时段检查模式
+    # 若设置了 AUTO_CHECK，则进入抢占式等待逻辑；否则直接发送（用于手动测试）
     if os.environ.get('AUTO_CHECK', 'False').lower() == 'true':
         auto_check_and_send()
     else:
-        # 否则保持原有的强制发送逻辑（用于手动触发或本地测试）
         send_email()
