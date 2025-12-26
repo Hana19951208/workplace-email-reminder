@@ -1,6 +1,6 @@
 import os
 import sys
-from send_email import send_email
+from send_email import auto_check_and_send
 
 def local_test():
     """
@@ -31,7 +31,7 @@ def local_test():
         if not os.environ.get('EMAIL_TYPE'):
             os.environ['EMAIL_TYPE'] = 'morning'
             
-        send_email()
+        auto_check_and_send()
         print("\n✅ 本地验证成功！请检查收件箱。")
     except Exception as e:
         print(f"\n❌ 验证失败: {str(e)}")

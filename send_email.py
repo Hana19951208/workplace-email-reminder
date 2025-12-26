@@ -12,6 +12,16 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import pytz
 import time
+import chinese_calendar as calendar
+from datetime import date
+from dotenv import load_dotenv
+
+# 🚀 自动加载环境变量逻辑
+# 优先加载 .env.local (本地私密配置)，如果不存在则加载 .env
+if os.path.exists('.env.local'):
+    load_dotenv('.env.local')
+else:
+    load_dotenv()
 
 
 def wait_for_target_time(target_hour: int, target_minute: int):
@@ -176,6 +186,17 @@ def auto_check_and_send():
     
     print(f"🏠 定时守卫已就绪，当前北京时间: {now.strftime('%H:%M:%S')}")
     
+    # 🕵️ 节假日过滤逻辑
+    try:
+        if not calendar.is_workday(now.date()):
+            print(f"🏖️ 检测到今天 ({now.strftime('%Y-%m-%d')}) 是法定节假日或周末，且无需调休。")
+            print("💤 脚本将自动退出，祝您假期愉快！")
+            return
+        else:
+            print(f"💼 检测到今天 ({now.strftime('%Y-%m-%d')}) 是工作日（含调休），准备发送提醒...")
+    except Exception as e:
+        print(f"⚠️ 节假日检查失败 (可能是年份数据未更新): {e}，将默认继续执行。")
+
     # 根据启动的小时数判定是【早间启动】还是【晚间启动】
     if 7 <= h < 9:
         print("☀️ 检测到早间启动信号...")
